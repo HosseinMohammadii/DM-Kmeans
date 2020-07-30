@@ -1,99 +1,179 @@
-from sklearn.cluster import DBSCAN
 import numpy as np
 import pandas as pd
+import random
 from matplotlib import pyplot as plt
-import folium
-import matplotlib.cm as cm
-import matplotlib as mpl
-from matplotlib.colors import LinearSegmentedColormap
-
-from numpy import arange
-
-N = 500
-data = arange(N +1)
 
 
+def create_centers(data, cluster_size, dimension_size):
+    centers = np.zeros((cluster_size, dimension_size))
+    for i in range(0, cluster_size):
+        r = random.randint(0, len(data)-1)
+        centers[i] = [data[r][0], data[r][1]]
 
-# =================
-## custom colormap:
-
-# red-green colormap:
-cdict = {'red':   [(0.0, 1.0, 1.0),  # red decreases
-                   (1.0, 0.0, 0.0)],
-
-         'green': [(0.0, 0.0, 0.0),  # green increases
-                   (1.0, 1.0, 1.0)],
-
-         'blue':  [(0.0, 0.0, 0.0),  # no blue at all
-                   (1.0, 0.0, 0.0)] }
-
-red_green_cm = LinearSegmentedColormap('RedGreen', cdict, N)
-
-colors = cm.get_cmap(red_green_cm, N)
+    centers = np.array(centers)
+    return centers
 
 
+def create_membership(cluster_size, data_size):
+    n = data_size
+    U = np.random.random((cluster_size, n))
+    for k in range(0, n):
+        s = sum(U[:, k])
+        for i in range(0, cluster_size):
+            U[i][k] = U[i][k] / s
+    return U
 
 
-# path = "Dataset2.csv"
-path = "covid.csv"
-data = pd.read_csv(path)
+def cal_membership(data_, centers_, cluster__size, data__size, mp):
+    c = cluster__size
+    n = data__size
+    D = np.zeros((c, n))
+    for k in range(0, n):
+        for i in range(0, c):
+            D[i][k] = np.linalg.norm(data_[k] - centers_[i])
 
-print(data.columns.values)
-print(data.size)
-print(len(data))
-# print(data['latitude'].dropna().values[0])
-# print(data[''].dropna().values[0])
+    distances = D[:]
 
-dbscan = DBSCAN(eps=0.08, min_samples=6)
-plt.scatter(data['longitude'].dropna().values, data['latitude'].dropna().values, s=0.5)
-# plt.scatter(data['X'].dropna().values, data['Y'].dropna().values, s=30)
+    "update memberships"
+    u = np.zeros((cluster__size, data__size))
+    n = len(distances[0])
+    c = len(distances)
+    Up = np.zeros((c, n))
+    h = 2 / (mp - 1)
+    for k in range(0, n):
+        for i in range(0, c):
+            if distances[i][k] == 0:
+                u[i][k] = 0
+            else:
+                s = sum((distances[i][k] / distances[j][k]) ** h for j in range(0, c) if distances[j][k] != 0)
+                u[i][k] = 1 / s
+    membership = u[:]
+    return membership
+
+
+def kmean(data, data_size, cluster_size, iteration_size, dimension_size, mp):
+    membershipo = create_membership(cluster_size, data_size)
+    centers = create_centers(data, cluster_size, dimension_size)
+    curr = 0
+
+    while curr < iteration_size:
+        curr = curr + 1
+
+        "update distances"
+        c = len(centers)
+        n = len(data)
+        D = np.zeros((c, n))
+        for k in range(0, n):
+            for i in range(0, c):
+                D[i][k] = np.linalg.norm(data[k] - centers[i])
+        distances = D[:]
+
+        "update memberships"
+        U = membershipo[:]
+        n = len(distances[0])
+        c = len(distances)
+        for k in range(0, n):
+            near_c = -1
+            min_dis = 500
+            for i in range(0, c):
+                if distances[i][k] < min_dis:
+                    min_dis = distances[i][k]
+                    near_c = i
+
+                U[i][k] = 0
+            U[near_c][k] = 1
+
+        membership = U[:]
+
+        "update centers"
+        c = len(membership)
+        n = len(data)
+        m = len(data[0])
+        V = np.zeros((c, m))
+
+        for i in range(0, c):
+            A = sum((membership[i][k]) * data[k] for k in range(0, n))
+            b = sum(membership[i][k] for k in range(0, n))
+            v = A / b
+            V[i] = v
+
+        centers = V[:]
+
+    "clustering error"
+    n = len(distances[0])
+    c = len(distances)
+    cluster_errors = []
+    clustering_error = 0.0
+    clus_num = 0
+    for i in range(0, c):
+        dis = 0.0
+        data_assigned = 0.0
+        for k in range(0, n):
+            if membership[i][k] == 1:
+                dis += distances[i][k]
+                data_assigned += 1.0
+        if data_assigned > 0:
+            cluster_errors.append((dis/data_assigned))
+            clus_num += 1
+
+    clustering_error = sum(er/clus_num for er in cluster_errors)
+
+    plot(membershipo, centers, data)
+
+    print('k-mean finished')
+
+    return centers, membership, clustering_error
+
+
+def plot(U, centers, data):
+    U = U.T
+    for uu in U:
+        armx = np.argmax(uu)
+        uu[armx] = 1
+    U = np.rint(U.T)
+
+    c = len(centers)
+    for i in range(0, c):
+        t = np.where(U[i] == 1.)
+        classD = np.array(data)[t]
+        plt.scatter(classD[:, 0], classD[:, 1], s=30)
+    plt.scatter(centers[:, 0], centers[:, 1], s=30, c='b', marker='s')
+    plt.show()
+
+
+path = "Dataset1.csv"
+pure_data = pd.read_csv(path)
+
+X = []
+Y = []
+for item in pure_data['X']:
+    X.append(item)
+for item in pure_data['Y']:
+    Y.append(item)
+
+dataa = np.vstack((X, Y))
+data = dataa.T
+
+gama = 1
+cluster_size = 4
+dimension_size = 2
+m = 2
+data_size = len(data)
+class_size = 2
+iteration_size = 30
+
+clustering_errors = []
+cluster_sizes = []
+
+for cluster_size in range(2, 16):
+    print(cluster_size)
+    centers, memberShip_train, clustering_error = kmean(data, len(pure_data), cluster_size, iteration_size,
+                                                        dimension_size, m)
+    cluster_sizes.append(cluster_size)
+    clustering_errors.append(clustering_error)
+    print(clustering_error)
+
+fig = plt.figure()
+fig, ax = plt.subplots()  # Create a figure containing a single axes.
+ax.plot(cluster_sizes, clustering_errors)
 plt.show()
-
-X1 = data.to_numpy()
-clustering1 = dbscan.fit_predict(X1)
-
-
-plt.scatter(X1[:, 1], X1[:, 0], c=clustering1, cmap="plasma", s=0.5)
-plt.show()
-
-path = "covid-sample.csv"
-data = pd.read_csv(path)
-
-print(data.columns.values)
-print(data.size)
-print(len(data))
-# print(data['latitude'].dropna().values[0])
-# print(data[''].dropna().values[0])
-
-dbscan = DBSCAN(eps=0.319, min_samples=4)
-plt.scatter(data['longitude'].dropna().values, data['latitude'].dropna().values, s=0.5)
-# plt.scatter(data['X'].dropna().values, data['Y'].dropna().values, s=30)
-plt.show()
-
-X2 = data.to_numpy()
-clustering2 = dbscan.fit_predict(X2)
-# clustering = dbscan.fit(X)
-# print(clustering)
-
-
-plt.scatter(X2[:, 1], X2[:, 0], c=clustering2, cmap="plasma", s=0.5)
-plt.show()
-
-m1 = folium.Map(location=[X1[0][0], X1[0][1]], zoom_start=5)
-counter = 0
-for coordinate in X1:
-    loc = (coordinate[0], coordinate[1])
-    folium.CircleMarker(location=loc, radius=0.05, icon_color=colors(clustering1[counter]), fill=True).add_to(m1)
-    counter += 1
-
-# display(m1)
-
-m2 = folium.Map(location=[X2[0][0], X2[0][1]], zoom_start=5)
-
-counter = 0
-for coordinate in X2:
-    loc = (coordinate[0], coordinate[1])
-    folium.CircleMarker(location=loc, radius=1, icon_color=colors(clustering2[counter]), fill=True).add_to(m2)
-    counter += 1
-
-# display(m2)
